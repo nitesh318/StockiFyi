@@ -44,7 +44,7 @@ years_to_predict = st.sidebar.slider("Years of prediction:", 1, 5)
 period = years_to_predict * 365
 
 with st.spinner("Loading data..."):
-    data = create_dummy_data(start_date, end_date)
+    data = generative_data(start_date, end_date)
     sleep(1)
 
 st.success("Data has been loaded successfully!")
