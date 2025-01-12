@@ -1,12 +1,14 @@
 import requests
 
+from config import API_BASE_URL, API_KEY
+
 # Define headers for the API calls
-headers = {'X-Api-Key': 'sk-live-nudh24voq1sg4F98bFJXvy4Hh5PjnwZEDpHq11xb'}
+headers = {'X-Api-Key': API_KEY}
 
 
 # Fetch most active stocks data from the API (NSE or BSE)
 def get_most_active_stocks(exchange='BSE'):
-    url = f'https://stock.indianapi.in/{exchange}_most_active'
+    url = f'{API_BASE_URL}{exchange}_most_active'
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()  # Check for successful response
@@ -17,7 +19,7 @@ def get_most_active_stocks(exchange='BSE'):
 
 # Fetch upcoming IPOs data from the API
 def get_upcoming_ipos():
-    url = 'https://stock.indianapi.in/ipo'
+    url = f'{API_BASE_URL}ipo'
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -28,7 +30,7 @@ def get_upcoming_ipos():
 
 # Fetch recent announcements for a selected stock
 def get_recent_announcements(stock_name):
-    url = f'https://stock.indianapi.in/recent_announcements?stock_name={stock_name}'
+    url = f'{API_BASE_URL}recent_announcements?stock_name={stock_name}'
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -39,7 +41,7 @@ def get_recent_announcements(stock_name):
 
 # Fetch historical stats for a selected stock
 def get_historical_stats(stock_name):
-    url = f'https://stock.indianapi.in/historical_stats?stock_name={stock_name}&stats=all'
+    url = f'{API_BASE_URL}historical_stats?stock_name={stock_name}&stats=all'
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -50,7 +52,7 @@ def get_historical_stats(stock_name):
 
 # Fetch stock information from the API
 def fetch_stock_info(stock_name):
-    url = f'https://stock.indianapi.in/stock?name={stock_name}'
+    url = f'{API_BASE_URL}stock?name={stock_name}'
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -61,8 +63,7 @@ def fetch_stock_info(stock_name):
 
 # Function to get stock data from the API
 def get_stock_comparison_data(stock_id):
-    url = f'https://stock.indianapi.in/stock_target_price?stock_id={stock_id}'
-    headers = {'X-Api-Key': 'sk-live-nudh24voq1sg4F98bFJXvy4Hh5PjnwZEDpHq11xb'}
+    url = f'{API_BASE_URL}stock_target_price?stock_id={stock_id}'
     response = requests.get(url, headers=headers)
 
     if response.status_code == 200:
