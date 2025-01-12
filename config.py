@@ -1,5 +1,3 @@
-# config.py
-
 # API Base URL
 API_BASE_URL = 'https://stock.indianapi.in/'
 

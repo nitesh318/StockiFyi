@@ -2,9 +2,7 @@ import requests
 
 from config import API_BASE_URL, API_KEY
 
-# Define headers for the API calls
 headers = {'X-Api-Key': API_KEY}
-
 
 # Fetch most active stocks data from the API (NSE or BSE)
 def get_most_active_stocks(exchange='BSE'):

@@ -2,31 +2,16 @@ import uuid
 from datetime import date
 from time import sleep
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from prophet import Prophet
 from streamlit_option_menu import option_menu
 
+from data import create_dummy_data
+from models import forecast_with_xgboost, forecast_with_svr, forecast_with_prophet
 from services import fetch_stock_info, get_most_active_stocks, get_upcoming_ipos, get_recent_announcements, \
     get_historical_stats, get_stock_comparison_data
-
-
-def create_dummy_data(start_date, end_date, freq='D'):
-    date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
-    prices = np.random.normal(loc=100, scale=10, size=len(date_range))  # Random prices around 100
-    data = pd.DataFrame({
-        'Date': date_range,
-        'Open': prices * np.random.uniform(0.95, 1.05, size=len(date_range)),
-        'High': prices * np.random.uniform(1.00, 1.10, size=len(date_range)),
-        'Low': prices * np.random.uniform(0.90, 1.00, size=len(date_range)),
-        'Close': prices,
-        'Adj Close': prices * np.random.uniform(0.95, 1.05, size=len(date_range)),
-        'Volume': np.random.randint(1000000, 5000000, size=len(date_range))
-    })
-    return data
-
 
 st.set_page_config(layout="wide", page_title="StocikFyi", page_icon="📈")
 
@@ -54,17 +39,6 @@ else:
     active_stocks = []
 
 selected_stock = st.sidebar.selectbox("Select stock for prediction", active_stocks)
-
-st.sidebar.markdown("## Upcoming IPOs")
-upcoming_ipos = get_upcoming_ipos()
-if upcoming_ipos:
-    for ipo in upcoming_ipos:
-        st.sidebar.write(f"**{ipo['name']}** ({ipo['symbol']})")
-        st.sidebar.write(f"Bid starts on: {ipo.get('bidding_start_date', 'N/A')}")
-        st.sidebar.write(f"Listing Date: {ipo.get('listing_date', 'N/A')}")
-        st.sidebar.markdown(f"[View Document]({ipo['document_url']})")
-else:
-    st.sidebar.write("No upcoming IPOs found.")
 
 years_to_predict = st.sidebar.slider("Years of prediction:", 1, 5)
 period = years_to_predict * 365
@@ -244,7 +218,30 @@ if selected_tab == "Statistics":
 # Forecasting Tab - Showcase
 if selected_tab == "Forecasting":
     st.markdown("<h2><span style='color: green;'>Forecasting</span> Information</h2>", unsafe_allow_html=True)
-    st.write("This section presents the forecasting features.")
+
+    # Forecast model selection
+    forecast_model = st.sidebar.selectbox("Select Forecasting Model", ["Prophet", "XGBoost", "SVR"])
+
+    # Display stock details and forecast period
+    st.markdown(f"<h3><span style='color: blue;'>Stock to Forecast: {selected_stock}</span></h3>",
+                unsafe_allow_html=True)
+    st.markdown(f"<h4><span style='color: gray;'>Time Frame: {start_date} to {end_date}</span></h4>",
+                unsafe_allow_html=True)
+    st.markdown(f"<h4><span style='color: gray;'>Forecasting Period: {years_to_predict} years</span></h4>",
+                unsafe_allow_html=True)
+
+    # Forecast based on selected model
+    if forecast_model == "Prophet":
+        forecast = forecast_with_prophet(start_date, end_date)
+    elif forecast_model == "XGBoost":
+        forecast = forecast_with_xgboost(start_date, end_date)
+    elif forecast_model == "SVR":
+        forecast = forecast_with_svr(start_date, end_date)
+
+print(forecast)
+# Display forecast results
+st.write("Forecast Results: ")
+st.write(forecast)
 
 # Comparison Tab
 if selected_tab == "Comparison":
@@ -331,3 +328,14 @@ if selected_tab == "Comparison":
             st.warning("No valid stock data available for comparison.")
     else:
         st.warning("Please select stocks to compare.")
+
+st.sidebar.markdown("## Upcoming IPOs")
+upcoming_ipos = get_upcoming_ipos()
+if upcoming_ipos:
+    for ipo in upcoming_ipos:
+        st.sidebar.write(f"**{ipo['name']}** ({ipo['symbol']})")
+        st.sidebar.write(f"Bid starts on: {ipo.get('bidding_start_date', 'N/A')}")
+        st.sidebar.write(f"Listing Date: {ipo.get('listing_date', 'N/A')}")
+        st.sidebar.markdown(f"[View Document]({ipo['document_url']})")
+else:
+    st.sidebar.write("No upcoming IPOs found.")
