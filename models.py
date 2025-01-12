@@ -1,30 +1,32 @@
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import streamlit as st
-import xgboost as xgb
 from prophet import Prophet
-from sklearn.metrics import mean_squared_error, r2_score
-from sklearn.model_selection import train_test_split
-from sklearn.svm import SVR
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+from statsmodels.tsa.arima.model import ARIMA
 
-from data import create_dummy_data
+from data import generative_data
 
 
 # Prophet Forecasting
-def forecast_with_prophet(start_date='2020-01-01', end_date='2022-01-01'):
-    data = create_dummy_data(start_date, end_date)
+def forecast_with_prophet(start_date, end_date, periods):
+    data = generative_data(start_date, end_date)
     df_train = data[["Date", "Close"]].rename(columns={"Date": "ds", "Close": "y"})
 
     # Instantiate and fit the model
     model = Prophet()
     model.fit(df_train)
-    future = model.make_future_dataframe(periods=365)  # Forecast for 365 days
+    future = model.make_future_dataframe(periods=periods)  # Forecast for future periods
     forecast = model.predict(future)
 
     # Ensure forecast is a DataFrame and extract relevant columns
     forecast_df = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper', 'trend', 'trend_lower', 'trend_upper',
                             'yearly', 'yearly_lower', 'yearly_upper', 'multiplicative_terms',
                             'multiplicative_terms_lower', 'multiplicative_terms_upper']]
+
+    # Filter to show only future dates
+    forecast_df = forecast_df[forecast_df['ds'] > pd.to_datetime(end_date)]
 
     # Plotting the forecast
     fig = model.plot(forecast)
@@ -33,74 +35,54 @@ def forecast_with_prophet(start_date='2020-01-01', end_date='2022-01-01'):
     return forecast_df
 
 
-# SVR Forecasting
-def forecast_with_svr(start_date='2020-01-01', end_date='2022-01-01', years_to_predict=1):
-    data = create_dummy_data(start_date, end_date)
-    df_train = data[["Date", "Close"]]
-    X = pd.to_datetime(df_train['Date']).values.reshape(-1, 1)
-    y = df_train['Close'].values
+# ARIMA Forecasting Function
+def forecast_with_arima(start_date, end_date, periods):
+    data = generative_data(start_date, end_date)
+    df_train = data.set_index('Date')["Close"]
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+    # Fit the ARIMA model
+    model = ARIMA(df_train, order=(5, 1, 0))  # ARIMA(p, d, q)
+    model_fit = model.fit()
 
-    model = SVR(kernel='rbf')
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
+    # Forecast future periods
+    future_dates = pd.date_range(start=df_train.index[-1] + pd.Timedelta(days=1), periods=periods)
+    forecast = model_fit.get_forecast(steps=periods)
+    forecast_df = forecast.summary_frame()
 
-    mse = mean_squared_error(y_test, y_pred)
-    r2 = r2_score(y_test, y_pred)
-    st.write(f"### SVR Model - MSE: {mse:.2f}, R2: {r2:.4f}")
+    # Prepare DataFrame to mirror Prophet output
+    forecast_df = forecast_df.rename(columns={
+        'mean': 'yhat',
+        'mean_ci_lower': 'yhat_lower',
+        'mean_ci_upper': 'yhat_upper'
+    })
+    forecast_df['ds'] = future_dates
 
-    future_dates = pd.date_range(start=end_date, periods=years_to_predict * 365, freq='D')
-    X_future = pd.to_datetime(future_dates).values.reshape(-1, 1)
+    # Filter to show only future dates
+    forecast_df = forecast_df[forecast_df['ds'] > pd.to_datetime(end_date)]
 
-    forecast = model.predict(X_future)
+    # Compute Metrics
+    actuals = data.set_index('Date')["Close"].tail(periods)
+    predictions = forecast_df['yhat'][:len(actuals)]
+    mae = mean_absolute_error(actuals, predictions)
+    mse = mean_squared_error(actuals, predictions)
+    rmse = np.sqrt(mse)
 
-    # Plotting the forecast
-    plt.figure(figsize=(10, 6))
-    plt.plot(df_train['Date'], df_train['Close'], label="Historical Data")
-    plt.plot(future_dates, forecast, label="Forecast", linestyle='--')
-    plt.title("SVR Forecast")
-    plt.xlabel("Date")
-    plt.ylabel("Close Price")
-    plt.legend()
-    st.pyplot(plt)
-
-    return pd.DataFrame({'Date': future_dates, 'Predicted Close': forecast}), mse, r2
-
-
-# XGBoost Forecasting
-def forecast_with_xgboost(start_date='2020-01-01', end_date='2022-01-01', years_to_predict=1):
-    data = create_dummy_data(start_date, end_date)
-    df_train = data[["Date", "Close"]]
-    df_train['Date'] = pd.to_datetime(df_train['Date'])
-    df_train['Date_ordinal'] = df_train['Date'].map(pd.Timestamp.toordinal)
-
-    X = df_train[['Date_ordinal']]
-    y = df_train['Close']
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
-
-    model = xgb.XGBRegressor()
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-
-    mse = mean_squared_error(y_test, y_pred)
-    r2 = r2_score(y_test, y_pred)
-    st.write(f"### XGBoost Model - MSE: {mse:.2f}, R2: {r2:.4f}")
-
-    future_dates = pd.date_range(start=end_date, periods=years_to_predict * 365, freq='D')
-    future_dates_ordinal = future_dates.map(pd.Timestamp.toordinal).values.reshape(-1, 1)
-
-    forecast = model.predict(future_dates_ordinal)
+    # Display Metrics
+    st.write("**Forecast Metrics:**")
+    st.write(f"Mean Absolute Error (MAE): {mae:.2f}")
+    st.write(f"Mean Squared Error (MSE): {mse:.2f}")
+    st.write(f"Root Mean Squared Error (RMSE): {rmse:.2f}")
 
     # Plotting the forecast
-    plt.figure(figsize=(10, 6))
-    plt.plot(df_train['Date'], df_train['Close'], label="Historical Data")
-    plt.plot(future_dates, forecast, label="Forecast", linestyle='--')
-    plt.title("XGBoost Forecast")
-    plt.xlabel("Date")
-    plt.ylabel("Close Price")
+    plt.figure(figsize=(10, 5))
+    plt.plot(df_train, label='Actual')
+    plt.plot(forecast_df['ds'], forecast_df['yhat'], label='Forecast')
+    plt.fill_between(forecast_df['ds'], forecast_df['yhat_lower'], forecast_df['yhat_upper'], color='k', alpha=0.1,
+                     label='Confidence Interval')
     plt.legend()
+    plt.xlabel('Date')
+    plt.ylabel('Close Price')
+    plt.title('ARIMA Forecast')
     st.pyplot(plt)
 
-    return pd.DataFrame({'Date': future_dates, 'Predicted Close': forecast}), mse, r2
+    return forecast_df

@@ -8,8 +8,8 @@ import streamlit as st
 from prophet import Prophet
 from streamlit_option_menu import option_menu
 
-from data import create_dummy_data
-from models import forecast_with_xgboost, forecast_with_svr, forecast_with_prophet
+from data import generative_data
+from models import forecast_with_prophet, forecast_with_arima
 from services import fetch_stock_info, get_most_active_stocks, get_upcoming_ipos, get_recent_announcements, \
     get_historical_stats, get_stock_comparison_data
 
@@ -215,33 +215,28 @@ if selected_tab == "Statistics":
         else:
             st.write("No profit and loss statistics available.")
 
-# Forecasting Tab - Showcase
+# Forecasting Tab
 if selected_tab == "Forecasting":
     st.markdown("<h2><span style='color: green;'>Forecasting</span> Information</h2>", unsafe_allow_html=True)
 
     # Forecast model selection
-    forecast_model = st.sidebar.selectbox("Select Forecasting Model", ["Prophet", "XGBoost", "SVR"])
+    forecast_model = st.sidebar.selectbox("Select Forecasting Model", ["Prophet", "Arima"])
 
     # Display stock details and forecast period
-    st.markdown(f"<h3><span style='color: blue;'>Stock to Forecast: {selected_stock}</span></h3>",
-                unsafe_allow_html=True)
-    st.markdown(f"<h4><span style='color: gray;'>Time Frame: {start_date} to {end_date}</span></h4>",
-                unsafe_allow_html=True)
-    st.markdown(f"<h4><span style='color: gray;'>Forecasting Period: {years_to_predict} years</span></h4>",
-                unsafe_allow_html=True)
+    st.markdown(f"""
+        <h3><span style='color: blue;'>Stock to Forecast: {selected_stock}</span></h3>
+        <h4><span style='color: orange;'>Time Frame: {end_date} to {end_date + pd.Timedelta(days=period)} / Forecasting Period: {years_to_predict} years</span></h4>
+    """, unsafe_allow_html=True)
 
     # Forecast based on selected model
     if forecast_model == "Prophet":
-        forecast = forecast_with_prophet(start_date, end_date)
-    elif forecast_model == "XGBoost":
-        forecast = forecast_with_xgboost(start_date, end_date)
-    elif forecast_model == "SVR":
-        forecast = forecast_with_svr(start_date, end_date)
+        forecast = forecast_with_prophet(start_date, end_date, period)
+    elif forecast_model == "Arima":
+        forecast = forecast_with_arima(start_date, end_date, period)
 
-print(forecast)
-# Display forecast results
-st.write("Forecast Results: ")
-st.write(forecast)
+    # Display forecast results only in the Forecasting tab
+    st.write("Forecast Results: ")
+    st.write(forecast)
 
 # Comparison Tab
 if selected_tab == "Comparison":

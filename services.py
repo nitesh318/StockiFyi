@@ -4,6 +4,7 @@ from config import API_BASE_URL, API_KEY
 
 headers = {'X-Api-Key': API_KEY}
 
+
 # Fetch most active stocks data from the API (NSE or BSE)
 def get_most_active_stocks(exchange='BSE'):
     url = f'{API_BASE_URL}{exchange}_most_active'

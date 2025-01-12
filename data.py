@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 
-def create_dummy_data(start_date, end_date, freq='D'):
+def generative_data(start_date, end_date, freq='D'):
     date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
     prices = np.random.normal(loc=100, scale=10, size=len(date_range))  # Random prices around 100
     data = pd.DataFrame({
