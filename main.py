@@ -28,11 +28,11 @@ def create_dummy_data(start_date, end_date, freq='D'):
     return data
 
 
-st.set_page_config(layout="wide", page_title="StockFusion", page_icon="📈")
+st.set_page_config(layout="wide", page_title="StocikFyi", page_icon="📈")
 
 # Sidebar
 st.sidebar.markdown(
-    "<h1 style='text-align: center; font-size: 30px; color: #1D3557;'><b>StockFu</b><b style='color: #F1A94D'>sion</b></h1>",
+    "<h1 style='text-align: center; font-size: 30px; color: #1D3557;'><b>Stocki</b><b style='color: #F1A94D'>fyi</b></h1>",
     unsafe_allow_html=True
 )
 
