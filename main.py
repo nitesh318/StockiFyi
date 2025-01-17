@@ -13,7 +13,7 @@ from models import forecast_with_prophet, forecast_with_arima
 from services import fetch_stock_info, get_most_active_stocks, get_upcoming_ipos, get_recent_announcements, \
     get_historical_stats, get_stock_comparison_data
 
-st.set_page_config(layout="wide", page_title="StocikFyi", page_icon="📈")
+st.set_page_config(layout="wide", page_title="StockiFyi", page_icon="📈")
 
 # Sidebar
 st.sidebar.markdown(
