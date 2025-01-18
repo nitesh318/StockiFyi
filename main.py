@@ -105,10 +105,15 @@ if selected_tab == "Dataframes":
         'yearly_upper', 'multiplicative_terms', 'multiplicative_terms_lower',
         'multiplicative_terms_upper'
     ]).rename(columns={
-        "ds": "Date", "yhat": "Close", "yhat_lower": "Close Lower",
-        "yhat_upper": "Close Upper", "trend": "Trend",
-        "trend_lower": "Trend Lower", "trend_upper": "Trend Upper"
+        "ds": "Forecast Date",
+        "yhat": "Predicted Close Price",
+        "yhat_lower": "Lower Bound (Predicted Close Price)",
+        "yhat_upper": "Upper Bound (Predicted Close Price)",
+        "trend": "Trend Component",
+        "trend_lower": "Lower Bound (Trend Component)",
+        "trend_upper": "Upper Bound (Trend Component)"
     })
+
     st.dataframe(new_forecast, use_container_width=True)
 
     announcements = get_recent_announcements(company_name)
@@ -244,27 +249,33 @@ if selected_tab == "Comparison":
         comparison_results = []
 
         for stock in stocks_data:
-            stock_metrics = stock.get('priceTarget', {})
-            recommendation_metrics = stock.get('recommendation', {})
+            stock_metrics = stock.get('priceTarget') or {}
+            recommendation_metrics = stock.get('recommendation') or {}
 
-            mean = stock_metrics.get('Mean', 0)
-            high = stock_metrics.get('High', 0)
-            low = stock_metrics.get('Low', 0)
-            recommendation_mean = recommendation_metrics.get('Mean', 0)
+            mean = stock_metrics.get('Mean') or 0
+            high = stock_metrics.get('High') or 0
+            low = stock_metrics.get('Low') or 0
+            recommendation_mean = recommendation_metrics.get('Mean') or 0
 
+            # Handle snapshots carefully to avoid None values
             price_snapshot_means = [snapshot['Mean'] for snapshot in
-                                    stock.get('priceTargetSnapshots', {}).get('PriceTargetSnapshot', [])]
+                                    stock.get('priceTargetSnapshots', {}).get('PriceTargetSnapshot', []) if
+                                    snapshot.get('Mean') is not None]
             recommendation_snapshot_means = [snapshot['Mean'] for snapshot in
-                                             stock.get('recommendationSnapshots', {}).get('RecommendationSnapshot', [])]
+                                             stock.get('recommendationSnapshots', {}).get('RecommendationSnapshot', [])
+                                             if snapshot.get('Mean') is not None]
 
-            avg_price_snapshot = sum(x for x in price_snapshot_means[-4:] if x is not None) / len(
-                [x for x in price_snapshot_means[-4:] if x is not None]) if price_snapshot_means else mean
-            avg_recommendation_snapshot = sum(x for x in recommendation_snapshot_means[-4:] if x is not None) / len(
-                [x for x in recommendation_snapshot_means[-4:] if
-                 x is not None]) if recommendation_snapshot_means else recommendation_mean
+            # Calculate the average of the last 4 snapshots or use mean if empty
+            avg_price_snapshot = (sum(price_snapshot_means[-4:]) / len(
+                price_snapshot_means[-4:])) if price_snapshot_means else mean
+            avg_recommendation_snapshot = (sum(recommendation_snapshot_means[-4:]) / len(
+                recommendation_snapshot_means[-4:])) if recommendation_snapshot_means else recommendation_mean
 
-            recommendation_trend = sum(
-                stat['NumberOfAnalysts'] for stat in recommendation_metrics.get('Statistics', {}).get('Statistic', []))
+            # Ensure valid recommendation trend
+            recommendation_trend = 0
+            if 'Statistics' in recommendation_metrics and recommendation_metrics['Statistics']:
+                recommendation_trend = sum(stat.get('NumberOfAnalysts', 0) for stat in
+                                           recommendation_metrics['Statistics'].get('Statistic', []))
 
             comparison_results.append({
                 'Company Name': stock['company_name'],
@@ -279,9 +290,11 @@ if selected_tab == "Comparison":
 
         comparison_df = pd.DataFrame(comparison_results)
 
+        # Calculate an investment score based on the desired parameters
         comparison_df['Investment Score'] = comparison_df[
             ['Mean Target Price', 'Recommendation Mean', 'Recommendation Trend']].mean(axis=1)
 
+        # Select the best stock based on the highest investment score
         best_stock = comparison_df.sort_values(by='Investment Score', ascending=False).iloc[0]
 
         return comparison_df, best_stock

@@ -2,31 +2,52 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+# Prophet Forecasting
 from prophet import Prophet
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from statsmodels.tsa.arima.model import ARIMA
 
 from data import generative_data
 
 
-# Prophet Forecasting
 def forecast_with_prophet(start_date, end_date, periods):
+    # Get the data
     data = generative_data(start_date, end_date)
     df_train = data[["Date", "Close"]].rename(columns={"Date": "ds", "Close": "y"})
 
-    # Instantiate and fit the model
+    # Instantiate and fit the Prophet model
     model = Prophet()
     model.fit(df_train)
     future = model.make_future_dataframe(periods=periods)  # Forecast for future periods
     forecast = model.predict(future)
 
-    # Ensure forecast is a DataFrame and extract relevant columns
-    forecast_df = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper', 'trend', 'trend_lower', 'trend_upper',
-                            'yearly', 'yearly_lower', 'yearly_upper', 'multiplicative_terms',
-                            'multiplicative_terms_lower', 'multiplicative_terms_upper']]
+    # List of expected columns to check and rename
+    expected_columns = {
+        'ds': 'Forecast Date',
+        'yhat': 'Predicted Close Price',
+        'yhat_lower': 'Lower Bound (Predicted Close Price)',
+        'yhat_upper': 'Upper Bound (Predicted Close Price)',
+        'trend': 'Trend Component',
+        'trend_lower': 'Lower Bound (Trend Component)',
+        'trend_upper': 'Upper Bound (Trend Component)',
+        'yearly': 'Yearly Component',
+        'yearly_lower': 'Lower Bound (Yearly Component)',
+        'yearly_upper': 'Upper Bound (Yearly Component)'
+    }
+
+    # Ensure only the available columns are selected
+    columns_to_include = list(expected_columns.keys())
+    columns_to_include = [col for col in columns_to_include if col in forecast.columns]
+
+    # Select the relevant columns for the forecast DataFrame
+    forecast_df = forecast[columns_to_include]
+
+    # Rename columns dynamically based on expected columns
+    forecast_df = forecast_df.rename(columns={col: expected_columns[col] for col in columns_to_include})
 
     # Filter to show only future dates
-    forecast_df = forecast_df[forecast_df['ds'] > pd.to_datetime(end_date)]
+    if 'Forecast Date' in forecast_df.columns:
+        forecast_df = forecast_df[forecast_df['Forecast Date'] > pd.to_datetime(end_date)]
 
     # Plotting the forecast
     fig = model.plot(forecast)
@@ -49,35 +70,58 @@ def forecast_with_arima(start_date, end_date, periods):
     forecast = model_fit.get_forecast(steps=periods)
     forecast_df = forecast.summary_frame()
 
-    # Prepare DataFrame to mirror Prophet output
-    forecast_df = forecast_df.rename(columns={
-        'mean': 'yhat',
-        'mean_ci_lower': 'yhat_lower',
-        'mean_ci_upper': 'yhat_upper'
-    })
-    forecast_df['ds'] = future_dates
+    # List of expected columns for ARIMA output
+    expected_columns = {
+        'mean': 'Predicted Close Price',
+        'mean_ci_lower': 'Lower Bound (Predicted Close Price)',
+        'mean_ci_upper': 'Upper Bound (Predicted Close Price)',
+        'obs_ci_lower': 'Lower Bound (Observed)',
+        'obs_ci_upper': 'Upper Bound (Observed)',
+        'mean_se': 'Standard Error (Predicted Close Price)',
+        'mean_ci_lower': 'Lower Bound (Predicted Close Price)',
+        'mean_ci_upper': 'Upper Bound (Predicted Close Price)'
+    }
+
+    # Ensure only the available columns are selected
+    columns_to_include = list(expected_columns.keys())
+    columns_to_include = [col for col in columns_to_include if col in forecast_df.columns]
+
+    # Select the relevant columns for the forecast DataFrame
+    forecast_df = forecast_df[columns_to_include]
+
+    # Rename columns dynamically based on expected columns
+    forecast_df = forecast_df.rename(columns={col: expected_columns[col] for col in columns_to_include})
+
+    # Add forecast dates to the DataFrame
+    forecast_df['Forecast Date'] = future_dates
 
     # Filter to show only future dates
-    forecast_df = forecast_df[forecast_df['ds'] > pd.to_datetime(end_date)]
+    forecast_df = forecast_df[forecast_df['Forecast Date'] > pd.to_datetime(end_date)]
 
     # Compute Metrics
     actuals = data.set_index('Date')["Close"].tail(periods)
-    predictions = forecast_df['yhat'][:len(actuals)]
+    predictions = forecast_df['Predicted Close Price'][:len(actuals)]
+
     mae = mean_absolute_error(actuals, predictions)
     mse = mean_squared_error(actuals, predictions)
     rmse = np.sqrt(mse)
+    r2 = r2_score(actuals, predictions)
+    mape = np.mean(np.abs((actuals - predictions) / actuals)) * 100
 
     # Display Metrics
     st.write("**Forecast Metrics:**")
     st.write(f"Mean Absolute Error (MAE): {mae:.2f}")
     st.write(f"Mean Squared Error (MSE): {mse:.2f}")
     st.write(f"Root Mean Squared Error (RMSE): {rmse:.2f}")
+    st.write(f"R-squared (R²): {r2:.2f}")
+    st.write(f"Mean Absolute Percentage Error (MAPE): {mape:.2f}%")
 
     # Plotting the forecast
     plt.figure(figsize=(10, 5))
     plt.plot(df_train, label='Actual')
-    plt.plot(forecast_df['ds'], forecast_df['yhat'], label='Forecast')
-    plt.fill_between(forecast_df['ds'], forecast_df['yhat_lower'], forecast_df['yhat_upper'], color='k', alpha=0.1,
+    plt.plot(forecast_df['Forecast Date'], forecast_df['Predicted Close Price'], label='Forecast')
+    plt.fill_between(forecast_df['Forecast Date'], forecast_df['Lower Bound (Predicted Close Price)'],
+                     forecast_df['Upper Bound (Predicted Close Price)'], color='k', alpha=0.1,
                      label='Confidence Interval')
     plt.legend()
     plt.xlabel('Date')
