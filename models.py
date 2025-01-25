@@ -7,7 +7,7 @@ from prophet import Prophet
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from statsmodels.tsa.arima.model import ARIMA
 
-from data import generative_data
+from data import generative_data, generative_data_Arima
 
 
 def forecast_with_prophet(start_date, end_date, periods):
@@ -57,8 +57,8 @@ def forecast_with_prophet(start_date, end_date, periods):
 
 
 # ARIMA Forecasting Function
-def forecast_with_arima(start_date, end_date, periods):
-    data = generative_data(start_date, end_date)
+def forecast_with_arima(stock_name, start_date, end_date, periods):
+    data = generative_data_Arima(stock_name, start_date, end_date)
     df_train = data.set_index('Date')["Close"]
 
     # Fit the ARIMA model

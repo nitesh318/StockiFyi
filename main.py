@@ -234,10 +234,12 @@ if selected_tab == "Forecasting":
     """, unsafe_allow_html=True)
 
     # Forecast based on selected model
+    company_name = next((stock['company'] for stock in most_active_stocks if stock['ticker'] == selected_stock),
+                        "Company Name Not Found")
     if forecast_model == "Prophet":
         forecast = forecast_with_prophet(start_date, end_date, period)
     elif forecast_model == "Arima":
-        forecast = forecast_with_arima(start_date, end_date, period)
+        forecast = forecast_with_arima(company_name, start_date, end_date, period)
 
     # Display forecast results only in the Forecasting tab
     st.write("Forecast Results: ")
