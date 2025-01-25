@@ -237,7 +237,7 @@ if selected_tab == "Forecasting":
     company_name = next((stock['company'] for stock in most_active_stocks if stock['ticker'] == selected_stock),
                         "Company Name Not Found")
     if forecast_model == "Prophet":
-        forecast = forecast_with_prophet(start_date, end_date, period)
+        forecast = forecast_with_prophet(company_name, start_date, end_date, period)
     elif forecast_model == "Arima":
         forecast = forecast_with_arima(company_name, start_date, end_date, period)
 

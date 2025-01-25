@@ -7,21 +7,17 @@ from prophet import Prophet
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from statsmodels.tsa.arima.model import ARIMA
 
-from data import generative_data, generative_data_Arima
+from data import generative_data_model
 
 
-def forecast_with_prophet(start_date, end_date, periods):
-    # Get the data
-    data = generative_data(start_date, end_date)
+def forecast_with_prophet(stock_name, start_date, end_date, periods):
+    data = generative_data_model(stock_name, start_date, end_date)
     df_train = data[["Date", "Close"]].rename(columns={"Date": "ds", "Close": "y"})
-
-    # Instantiate and fit the Prophet model
     model = Prophet()
     model.fit(df_train)
     future = model.make_future_dataframe(periods=periods)  # Forecast for future periods
     forecast = model.predict(future)
 
-    # List of expected columns to check and rename
     expected_columns = {
         'ds': 'Forecast Date',
         'yhat': 'Predicted Close Price',
@@ -35,42 +31,30 @@ def forecast_with_prophet(start_date, end_date, periods):
         'yearly_upper': 'Upper Bound (Yearly Component)'
     }
 
-    # Ensure only the available columns are selected
     columns_to_include = list(expected_columns.keys())
     columns_to_include = [col for col in columns_to_include if col in forecast.columns]
-
-    # Select the relevant columns for the forecast DataFrame
     forecast_df = forecast[columns_to_include]
-
-    # Rename columns dynamically based on expected columns
     forecast_df = forecast_df.rename(columns={col: expected_columns[col] for col in columns_to_include})
 
-    # Filter to show only future dates
     if 'Forecast Date' in forecast_df.columns:
         forecast_df = forecast_df[forecast_df['Forecast Date'] > pd.to_datetime(end_date)]
 
-    # Plotting the forecast
     fig = model.plot(forecast)
     st.pyplot(fig)
-
     return forecast_df
 
 
 # ARIMA Forecasting Function
 def forecast_with_arima(stock_name, start_date, end_date, periods):
-    data = generative_data_Arima(stock_name, start_date, end_date)
+    data = generative_data_model(stock_name, start_date, end_date)
     df_train = data.set_index('Date')["Close"]
-
-    # Fit the ARIMA model
     model = ARIMA(df_train, order=(5, 1, 0))  # ARIMA(p, d, q)
     model_fit = model.fit()
 
-    # Forecast future periods
     future_dates = pd.date_range(start=df_train.index[-1] + pd.Timedelta(days=1), periods=periods)
     forecast = model_fit.get_forecast(steps=periods)
     forecast_df = forecast.summary_frame()
 
-    # List of expected columns for ARIMA output
     expected_columns = {
         'mean': 'Predicted Close Price',
         'mean_ci_lower': 'Lower Bound (Predicted Close Price)',
@@ -82,26 +66,14 @@ def forecast_with_arima(stock_name, start_date, end_date, periods):
         'mean_ci_upper': 'Upper Bound (Predicted Close Price)'
     }
 
-    # Ensure only the available columns are selected
     columns_to_include = list(expected_columns.keys())
     columns_to_include = [col for col in columns_to_include if col in forecast_df.columns]
-
-    # Select the relevant columns for the forecast DataFrame
     forecast_df = forecast_df[columns_to_include]
-
-    # Rename columns dynamically based on expected columns
     forecast_df = forecast_df.rename(columns={col: expected_columns[col] for col in columns_to_include})
-
-    # Add forecast dates to the DataFrame
     forecast_df['Forecast Date'] = future_dates
-
-    # Filter to show only future dates
     forecast_df = forecast_df[forecast_df['Forecast Date'] > pd.to_datetime(end_date)]
-
-    # Compute Metrics
     actuals = data.set_index('Date')["Close"].tail(periods)
     predictions = forecast_df['Predicted Close Price'][:len(actuals)]
-
     mae = mean_absolute_error(actuals, predictions)
     mse = mean_squared_error(actuals, predictions)
     rmse = np.sqrt(mse)
@@ -116,7 +88,6 @@ def forecast_with_arima(stock_name, start_date, end_date, periods):
     st.write(f"R-squared (R²): {r2:.2f}")
     st.write(f"Mean Absolute Percentage Error (MAPE): {mape:.2f}%")
 
-    # Plotting the forecast
     plt.figure(figsize=(10, 5))
     plt.plot(df_train, label='Actual')
     plt.plot(forecast_df['Forecast Date'], forecast_df['Predicted Close Price'], label='Forecast')
@@ -128,5 +99,4 @@ def forecast_with_arima(stock_name, start_date, end_date, periods):
     plt.ylabel('Close Price')
     plt.title('ARIMA Forecast')
     st.pyplot(plt)
-
     return forecast_df

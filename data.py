@@ -19,7 +19,7 @@ def generative_data(start_date, end_date, freq='D'):
     return data
 
 
-def generative_data_Arima(stock_name, start_date, end_date, freq='D'):
+def generative_data_model(stock_name, start_date, end_date, freq='D'):
     seed = int(hashlib.sha256(stock_name.encode('utf-8')).hexdigest(), 16) % (10 ** 8)
     np.random.seed(seed)
     date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
