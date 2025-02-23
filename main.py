@@ -447,11 +447,9 @@ if selected_tab == "Forecasting":
         if comparison_df is not None and not comparison_df.empty:
             st.markdown("<h3 style='color: #0288D1;'>📊 Prophet vs. ARIMA vs. LSTM Forecast Comparison</h3>",
                         unsafe_allow_html=True)
-            st.dataframe(comparison_df, use_container_width=True)
 
             true_values = generative_data_model(company_name, start_date, end_date).set_index("Date")["Close"]
             true_values = true_values.reindex(comparison_df["Date"], method="ffill").reset_index(drop=True)
-            comparison_df = comparison_df.reset_index(drop=True)
 
             prophet_mae = mean_absolute_error(true_values, comparison_df["Prophet"])
             arima_mae = mean_absolute_error(true_values, comparison_df["ARIMA"])  # Corrected capitalization

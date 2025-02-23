@@ -116,6 +116,8 @@ def forecast_with_lstm(stock_name, start_date, end_date, periods, look_back=10):
 def compare_models(stock_name, start_date, end_date, periods):
     with st.spinner("📊 Comparing Models..."):
         try:
+            data = generative_data_model(stock_name, start_date, end_date)
+
             prophet_forecast = forecast_with_prophet(stock_name, start_date, end_date, periods)[["Date", "Prophet"]]
             arima_forecast = forecast_with_arima(stock_name, start_date, end_date, periods)[["Date", "ARIMA"]]
             lstm_forecast = forecast_with_lstm(stock_name, start_date, end_date, periods)[["Date", "LSTM"]]
