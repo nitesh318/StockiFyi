@@ -5,7 +5,10 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from prophet import Prophet
+from sklearn.preprocessing import MinMaxScaler
 from statsmodels.tsa.arima.model import ARIMA
+from tensorflow.keras.layers import LSTM, Dense, Dropout
+from tensorflow.keras.models import Sequential
 
 
 def generative_data_model(stock_name, start_date, end_date, freq='D'):
@@ -21,7 +24,7 @@ def generative_data_model(stock_name, start_date, end_date, freq='D'):
     for _ in range(1, len(date_range)):
         daily_change = prices[-1] * np.random.uniform(-volatility, volatility)
         trend_effect = prices[-1] * trend / len(date_range)
-        noise = np.random.normal(0, 1)  # Added slight noise for variation
+        noise = np.random.normal(0, 1)
         prices.append(prices[-1] + daily_change + trend_effect + noise)
 
     data = pd.DataFrame({
@@ -36,84 +39,96 @@ def generative_data_model(stock_name, start_date, end_date, freq='D'):
     return data
 
 
+def forecast_with_arima(stock_name, start_date, end_date, periods):
+    data = generative_data_model(stock_name, start_date, end_date)
+    model = ARIMA(data.set_index('Date')["Close"], order=(5, 1, 0))
+    model_fit = model.fit()
+    forecast = model_fit.get_forecast(steps=periods)
+
+    future_dates = pd.date_range(start=data["Date"].iloc[-1] + pd.Timedelta(days=1), periods=periods)
+    forecast_df = pd.DataFrame({
+        "Date": future_dates,
+        "ARIMA": forecast.predicted_mean.values  # Fix: Correctly extracting ARIMA predictions
+    })
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=data["Date"], y=data["Close"], mode="lines", name="Actual", line=dict(color="black")))
+    fig.add_trace(
+        go.Scatter(x=future_dates, y=forecast_df["ARIMA"], mode="lines", name="ARIMA", line=dict(color="red")))
+    fig.update_layout(title="📊 ARIMA Stock Forecast", xaxis_title="Date", yaxis_title="Stock Price",
+                      template="plotly_white")
+    st.plotly_chart(fig, use_container_width=True)
+    return forecast_df
+
+
 def forecast_with_prophet(stock_name, start_date, end_date, periods):
     data = generative_data_model(stock_name, start_date, end_date)
-
     if data.empty:
         st.error("⚠️ No stock data available for the given time range!")
         return None
 
-    data = data.rename(columns={"Date": "ds", "Close": "y"})
     model = Prophet()
-    model.fit(data)
-    future = model.make_future_dataframe(periods=periods)
-    forecast = model.predict(future)
+    model.fit(data.rename(columns={"Date": "ds", "Close": "y"}))
+    forecast = model.predict(model.make_future_dataframe(periods=periods))
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=data["ds"], y=data["y"], mode="lines", name="Actual Prices", line=dict(color="black")))
-    fig.add_trace(go.Scatter(x=forecast["ds"], y=forecast["yhat"], mode="lines", name="Prophet Prediction",
-                             line=dict(color="blue")))
-    fig.add_trace(go.Scatter(x=forecast["ds"], y=forecast["yhat_upper"], mode="lines", name="Upper Bound",
-                             line=dict(color="rgba(0,0,255,0.3)"), showlegend=False))
-    fig.add_trace(go.Scatter(x=forecast["ds"], y=forecast["yhat_lower"], mode="lines", name="Lower Bound",
-                             line=dict(color="rgba(0,0,255,0.3)"), fill="tonexty", showlegend=False))
-
+    fig.add_trace(go.Scatter(x=data["Date"], y=data["Close"], mode="lines", name="Actual", line=dict(color="black")))
+    fig.add_trace(
+        go.Scatter(x=forecast["ds"], y=forecast["yhat"], mode="lines", name="Prophet", line=dict(color="blue")))
     fig.update_layout(title="📊 Prophet Stock Forecast", xaxis_title="Date", yaxis_title="Stock Price",
                       template="plotly_white")
     st.plotly_chart(fig, use_container_width=True)
+    return forecast.rename(columns={"ds": "Date", "yhat": "Prophet"})
 
-    return forecast
 
-
-def forecast_with_arima(stock_name, start_date, end_date, periods):
+def forecast_with_lstm(stock_name, start_date, end_date, periods, look_back=10):
     data = generative_data_model(stock_name, start_date, end_date)
-    df_train = data.set_index('Date')["Close"]
-    model = ARIMA(df_train, order=(5, 1, 0))
-    model_fit = model.fit()
+    scaler = MinMaxScaler()
+    scaled_data = scaler.fit_transform(data[["Close"]])
 
-    future_dates = pd.date_range(start=df_train.index[-1] + pd.Timedelta(days=1), periods=periods)
-    forecast = model_fit.get_forecast(steps=periods)
-    forecast_df = forecast.summary_frame()
-    forecast_df["Date"] = future_dates
+    X, y = [], []
+    for i in range(len(scaled_data) - look_back):
+        X.append(scaled_data[i:i + look_back])
+        y.append(scaled_data[i + look_back])
+
+    X, y = np.array(X), np.array(y)
+
+    model = Sequential([LSTM(50, return_sequences=True, input_shape=(look_back, 1)), Dropout(0.2), LSTM(50), Dense(1)])
+    model.compile(optimizer="adam", loss="mse")
+    model.fit(X, y, epochs=20, batch_size=8, verbose=0)
+
+    last_inputs = scaled_data[-look_back:]
+    predictions = [model.predict(last_inputs.reshape(1, look_back, 1), verbose=0)[0, 0] for _ in range(periods)]
+    predictions = scaler.inverse_transform(np.array(predictions).reshape(-1, 1)).flatten()
+
+    future_dates = pd.date_range(start=data["Date"].iloc[-1] + pd.Timedelta(days=1), periods=periods)
+    forecast_df = pd.DataFrame({"Date": future_dates, "LSTM": predictions})
 
     fig = go.Figure()
-    fig.add_trace(
-        go.Scatter(x=df_train.index, y=df_train, mode="lines", name="Actual Prices", line=dict(color="black")))
-    fig.add_trace(go.Scatter(x=forecast_df["Date"], y=forecast_df["mean"], mode="lines", name="ARIMA Prediction",
-                             line=dict(color="red")))
-    fig.add_trace(go.Scatter(x=forecast_df["Date"], y=forecast_df["mean_ci_upper"], mode="lines", name="Upper Bound",
-                             line=dict(color="rgba(255,0,0,0.3)"), showlegend=False))
-    fig.add_trace(go.Scatter(x=forecast_df["Date"], y=forecast_df["mean_ci_lower"], mode="lines", name="Lower Bound",
-                             line=dict(color="rgba(255,0,0,0.3)"), fill="tonexty", showlegend=False))
-
-    fig.update_layout(title="📊 ARIMA Stock Forecast", xaxis_title="Date", yaxis_title="Stock Price",
+    fig.add_trace(go.Scatter(x=data["Date"], y=data["Close"], mode="lines", name="Actual", line=dict(color="black")))
+    fig.add_trace(go.Scatter(x=future_dates, y=predictions, mode="lines", name="LSTM", line=dict(color="green")))
+    fig.update_layout(title="📊 LSTM Stock Forecast", xaxis_title="Date", yaxis_title="Stock Price",
                       template="plotly_white")
     st.plotly_chart(fig, use_container_width=True)
-
     return forecast_df
 
 
 def compare_models(stock_name, start_date, end_date, periods):
-    data = generative_data_model(stock_name, start_date, end_date)
-    df_train = data[["Date", "Close"]].rename(columns={"Date": "ds", "Close": "y"})
-    prophet_model = Prophet()
-    prophet_model.fit(df_train)
-    future = prophet_model.make_future_dataframe(periods=periods)
-    prophet_forecast = prophet_model.predict(future)
-    prophet_forecast = prophet_forecast[["ds", "yhat"]].rename(columns={"ds": "Date", "yhat": "Prophet Prediction"})
-    prophet_forecast["Date"] = pd.to_datetime(prophet_forecast["Date"])
+    with st.spinner("📊 Comparing Models..."):
+        try:
+            prophet_forecast = forecast_with_prophet(stock_name, start_date, end_date, periods)[["Date", "Prophet"]]
+            arima_forecast = forecast_with_arima(stock_name, start_date, end_date, periods)[["Date", "ARIMA"]]
+            lstm_forecast = forecast_with_lstm(stock_name, start_date, end_date, periods)[["Date", "LSTM"]]
 
-    df_train_arima = data.set_index('Date')["Close"]
-    arima_model = ARIMA(df_train_arima, order=(5, 1, 0))
-    arima_fit = arima_model.fit()
-    forecast_arima = arima_fit.get_forecast(steps=periods)
-    arima_forecast = forecast_arima.summary_frame()
-    future_dates = pd.date_range(start=df_train_arima.index[-1] + pd.Timedelta(days=1), periods=periods)
-    arima_forecast["Date"] = future_dates
-    arima_forecast = arima_forecast.rename(columns={"mean": "ARIMA Prediction"})
-    arima_forecast["Date"] = pd.to_datetime(arima_forecast["Date"])
+            prophet_forecast["Prophet"] += np.random.normal(0, 1, len(prophet_forecast))
+            arima_forecast["ARIMA"] += np.random.normal(0, 1, len(arima_forecast))
+            lstm_forecast["LSTM"] += np.random.normal(0, 1, len(lstm_forecast))
 
-    comparison_df = pd.merge(prophet_forecast, arima_forecast[["Date", "ARIMA Prediction"]], on="Date", how="inner")
-    comparison_df.fillna(method="ffill", inplace=True)
+            comparison_df = prophet_forecast.merge(arima_forecast, on="Date", how="outer") \
+                .merge(lstm_forecast, on="Date", how="outer")
+            comparison_df.fillna(0, inplace=True)
+            return comparison_df
 
-    return comparison_df
+        except Exception as e:
+            st.error(f"❌ Error while comparing models: {e}")
+            return None

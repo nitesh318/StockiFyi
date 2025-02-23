@@ -8,14 +8,12 @@ from sklearn.metrics import mean_absolute_error
 from streamlit_option_menu import option_menu
 
 from data import generative_data, generative_data_model
-from models import forecast_with_prophet, forecast_with_arima, compare_models
+from models import forecast_with_prophet, forecast_with_arima, compare_models, forecast_with_lstm
 from services import (
-    fetch_stock_info,
     get_most_active_stocks,
     get_upcoming_ipos,
     get_recent_announcements,
-    get_historical_stats,
-    get_stock_comparison_data,
+    get_stock_comparison_data, fetch_stock_info, get_historical_stats,
 )
 
 st.set_page_config(layout="wide", page_title="StockiFyi", page_icon="📈")
@@ -47,7 +45,6 @@ period = years_to_predict * 365
 
 with st.spinner("Loading data..."):
     data = generative_data(start_date, end_date)
-
 st.success("Data has been loaded successfully!")
 
 
@@ -62,7 +59,6 @@ def run_forecast(data, period, end_date):
     return forecast[forecast["ds"] >= pd.to_datetime(end_date)]
 
 
-# Run the forecast
 forecast = run_forecast(data, period, end_date)
 
 # Tabs
@@ -81,14 +77,12 @@ selected_tab = option_menu(
     orientation="horizontal",
 )
 
-# Handle Comparison Tab
 selected_stocks = (
     st.sidebar.multiselect("Select stocks for comparison", active_stocks)
     if selected_tab == "Comparison"
     else None
 )
 
-# Dataframes Tab
 if selected_tab == "Dataframes":
     company_name = next(
         (
@@ -146,7 +140,6 @@ if selected_tab == "Dataframes":
 
     st.dataframe(forecast_filtered, use_container_width=True)
 
-    # Recent Announcements
     announcements = get_recent_announcements(company_name)
     if announcements:
         st.markdown(f"### Recent Announcements for {company_name}")
@@ -169,20 +162,13 @@ if selected_tab == "Plots":
         f"<h2><span style='color: green;'>{company_name}</span> Trend Analysis</h2>",
         unsafe_allow_html=True,
     )
-
-    # Fetch historical data
     data = generative_data_model(selected_stock, start_date, end_date)
 
-    # Moving Averages for Trend Analysis
     data["SMA_50"] = data["Close"].rolling(window=50).mean()
     data["SMA_200"] = data["Close"].rolling(window=200).mean()
-
-    # Forecasting (Dynamic Per Stock)
     forecast = run_forecast(data, period, end_date)
 
-    # Candlestick Chart
     fig = go.Figure()
-
     fig.add_trace(
         go.Candlestick(
             x=data["Date"],
@@ -217,7 +203,6 @@ if selected_tab == "Plots":
         )
     )
 
-    # Forecast Data
     fig.add_trace(
         go.Scatter(
             x=forecast["ds"],
@@ -287,7 +272,6 @@ if selected_tab == "Statistics":
 
     with tab1:
         st.markdown("<h3 style='color: #FF9800;'>📊 Key Financial Metrics</h3>", unsafe_allow_html=True)
-
         data = []
 
         for company in peer_company_list:
@@ -303,7 +287,6 @@ if selected_tab == "Statistics":
                 'Dividend Yield (%)': company.get('dividendYieldIndicatedAnnualDividend', 0) or 0
             }
             data.append(company_metrics)
-
         df = pd.DataFrame(data)
 
 
@@ -330,37 +313,81 @@ if selected_tab == "Statistics":
             for metric, year_data in profit_loss_stats.items():
                 profit_loss_stats[metric] = {year: (0 if pd.isna(value) else value) for year, value in
                                              year_data.items()}
+
             profit_loss_df = pd.DataFrame(profit_loss_stats).T
+            profit_loss_df.fillna(0, inplace=True)
             profit_loss_df.reset_index(inplace=True)
             profit_loss_df.columns = ['Metric'] + list(profit_loss_df.columns[1:])
 
 
-            def highlight_table(s):
-                return ['background-color: #f4f4f4' if i % 2 == 0 else 'background-color: #ffffff' for i in
-                        range(len(s))]
+        def highlight_table(s):
+            return ['background-color: #f4f4f4' if i % 2 == 0 else 'background-color: #ffffff' for i in range(len(s))]
 
 
-            styled_profit_loss_df = profit_loss_df.style.set_properties(**{'text-align': 'center'}) \
-                .set_table_styles([
-                {'selector': 'th', 'props': [('font-size', '14px'),
-                                             ('background-color', '#E91E63'),
-                                             ('color', 'white'),
-                                             ('text-align', 'center')]}]) \
-                .apply(highlight_table, subset=pd.IndexSlice[:, :])
+        styled_profit_loss_df = profit_loss_df.style.set_properties(**{'text-align': 'center'}) \
+            .set_table_styles([{'selector': 'th', 'props': [('font-size', '14px'),
+                                                            ('background-color', '#E91E63'),
+                                                            ('color', 'white'),
+                                                            ('text-align', 'center')]}]) \
+            .apply(highlight_table, subset=pd.IndexSlice[:, :])
 
-            st.dataframe(styled_profit_loss_df, use_container_width=True)
+        st.dataframe(styled_profit_loss_df, use_container_width=True)
+        st.markdown("<h3 style='color: #00BCD4;'>📊 Data Analysis</h3>", unsafe_allow_html=True)
+
+        comments = []
+
+
+        def convert_to_float(value):
+            return float(value.strip('%')) if isinstance(value, str) else value
+
+
+        sales_growth = profit_loss_df.loc[profit_loss_df['Metric'] == 'Compounded Sales Growth']
+        ttm_sales_growth = convert_to_float(sales_growth.iloc[0]['TTM:'])
+        if ttm_sales_growth < 0:
+            comments.append(
+                "<li><strong>Compounded Sales Growth:</strong> Recent sales growth is negative, indicating potential challenges in maintaining sales momentum.</li>")
         else:
-            st.markdown("<p style='color: red; font-size: 16px;'>⚠️ No profit and loss statistics available.</p>",
-                        unsafe_allow_html=True)
+            comments.append(
+                "<li><strong>Compounded Sales Growth:</strong> The company has shown robust sales growth over the long term, but recent figures suggest a need for revitalized strategies.</li>")
+
+        profit_growth = profit_loss_df.loc[profit_loss_df['Metric'] == 'Compounded Profit Growth']
+        ttm_profit_growth = convert_to_float(profit_growth.iloc[0]['TTM:'])
+        if ttm_profit_growth < 0:
+            comments.append(
+                "<li><strong>Compounded Profit Growth:</strong> Recent profit growth is negative, suggesting financial difficulties that need to be addressed.</li>")
+        else:
+            comments.append(
+                "<li><strong>Compounded Profit Growth:</strong> The company has demonstrated strong profit growth over the long term, though recent figures indicate some financial strain.</li>")
+
+        stock_price_cagr = profit_loss_df.loc[profit_loss_df['Metric'] == 'Stock Price CAGR']
+        last_year_stock_price = convert_to_float(stock_price_cagr.iloc[0]['1 Year:'])
+        if last_year_stock_price < 0:
+            comments.append(
+                "<li><strong>Stock Price CAGR:</strong> The stock price has faced setbacks in the short term, indicating market volatility or company-specific issues.</li>")
+        else:
+            comments.append(
+                "<li><strong>Stock Price CAGR:</strong> The stock price has appreciated impressively over the medium term, though recent performance indicates some volatility.</li>")
+
+        # Return on Equity Analysis
+        roe = profit_loss_df.loc[profit_loss_df['Metric'] == 'Return on Equity']
+        last_year_roe = convert_to_float(roe.iloc[0]['Last Year:'])
+        if last_year_roe > 0:
+            comments.append(
+                "<li><strong>Return on Equity:</strong> The company maintains a strong ROE, indicating effective management of shareholder funds.</li>")
+        else:
+            comments.append(
+                "<li><strong>Return on Equity:</strong> Recent ROE figures suggest room for improvement in managing shareholder funds effectively.</li>")
+
+        st.markdown(f"<ul style='list-style-type:circle; color: #333;'>{''.join(comments)}</ul>",
+                    unsafe_allow_html=True)
 
 if selected_tab == "Forecasting":
     company_name = next((stock['company'] for stock in most_active_stocks if stock['ticker'] == selected_stock),
                         "Company Name Not Found")
 
     st.sidebar.markdown("<h3 style='color:#673AB7;'>🔮 Select Forecasting Model</h3>", unsafe_allow_html=True)
-    forecast_model = st.sidebar.radio("Choose Model", ["Prophet", "Arima", "Compare Both"])
+    forecast_model = st.sidebar.radio("Choose Model", ["Prophet", "ARIMA", "LSTM", "Compare All"])
 
-    # Banner
     st.markdown(
         f"""
         <div style='padding: 8px; border-radius: 6px; background: linear-gradient(to right, #0D47A1, #1976D2);
@@ -372,82 +399,81 @@ if selected_tab == "Forecasting":
         unsafe_allow_html=True
     )
 
-    # Fetch forecast data
-    prophet_forecast, arima_forecast = None, None
+    prophet_forecast, arima_forecast, lstm_forecast = None, None, None
 
-    if forecast_model in ["Prophet", "Compare Both"]:
-        prophet_forecast = forecast_with_prophet(company_name, start_date, end_date, period)
+    if forecast_model in ["Prophet", "Compare All"]:
+        with st.spinner("🔮 Loading Prophet Forecast..."):
+            prophet_forecast = forecast_with_prophet(company_name, start_date, end_date, period)
 
         if prophet_forecast is not None and not prophet_forecast.empty:
-            if "ds" in prophet_forecast.columns:
-                prophet_forecast.rename(columns={"ds": "Date"}, inplace=True)
-            else:
-                st.error(
-                    f"⚠️ 'Date' column missing in Prophet forecast! Available columns: {', '.join(prophet_forecast.columns)}")
+            prophet_forecast.rename(columns={"ds": "Date"}, inplace=True)
         else:
             st.error("⚠️ Prophet forecast data is empty or unavailable.")
 
-    if forecast_model in ["Arima", "Compare Both"]:
-        arima_forecast = forecast_with_arima(company_name, start_date, end_date, period)
+    if forecast_model in ["ARIMA", "Compare All"]:
+        with st.spinner("📉 Loading ARIMA Forecast..."):
+            arima_forecast = forecast_with_arima(company_name, start_date, end_date, period)
 
         if arima_forecast is not None and not arima_forecast.empty:
-            if "Forecast Date" in arima_forecast.columns:
-                arima_forecast.rename(columns={"Forecast Date": "Date"}, inplace=True)
+            arima_forecast.rename(columns={"Forecast Date": "Date"}, inplace=True)
         else:
             st.error("⚠️ ARIMA forecast data is empty or unavailable.")
 
-    # Display Prophet Results
-    if forecast_model == "Prophet" and prophet_forecast is not None and not prophet_forecast.empty:
+    if forecast_model in ["LSTM", "Compare All"]:
+        with st.spinner("🔮 Loading LSTM Forecast..."):
+            lstm_forecast = forecast_with_lstm(company_name, start_date, end_date, period)
+
+        if lstm_forecast is not None and not lstm_forecast.empty:
+            lstm_forecast.rename(columns={"Forecast Date": "Date"}, inplace=True)
+        else:
+            st.error("⚠️ LSTM forecast data is empty or unavailable.")
+
+    if forecast_model == "Prophet" and prophet_forecast is not None:
         st.markdown("<h3 style='color: #4CAF50;'>📈 Prophet Forecast Results</h3>", unsafe_allow_html=True)
         st.dataframe(prophet_forecast, use_container_width=True)
 
-    elif forecast_model == "Arima" and arima_forecast is not None and not arima_forecast.empty:
+    elif forecast_model == "ARIMA" and arima_forecast is not None:
         st.markdown("<h3 style='color: #FF9800;'>📉 ARIMA Forecast Results</h3>", unsafe_allow_html=True)
-        if "Date" in arima_forecast.columns:
-            arima_forecast.rename(columns={"Date": "Date"}, inplace=True)
-            arima_forecast["Date"] = pd.to_datetime(arima_forecast["Date"])
-        else:
-            st.error(f"⚠️ 'Date' column not found! Available columns: {', '.join(arima_forecast.columns)}")
-            st.stop()
         st.dataframe(arima_forecast, use_container_width=True)
 
-        if "mean" in arima_forecast.columns:
-            arima_forecast.rename(columns={"mean": "Predicted Close Price"}, inplace=True)
+    elif forecast_model == "LSTM" and lstm_forecast is not None:
+        st.markdown("<h3 style='color: #E91E63;'>🔮 LSTM Forecast Results</h3>", unsafe_allow_html=True)
+        st.dataframe(lstm_forecast, use_container_width=True)
+
+    elif forecast_model == "Compare All":
+        with st.spinner("📊 Comparing All Models..."):
+            comparison_df = compare_models(company_name, start_date, end_date, period)
+
+        if comparison_df is not None and not comparison_df.empty:
+            st.markdown("<h3 style='color: #0288D1;'>📊 Prophet vs. ARIMA vs. LSTM Forecast Comparison</h3>",
+                        unsafe_allow_html=True)
+            st.dataframe(comparison_df, use_container_width=True)
+
+            true_values = generative_data_model(company_name, start_date, end_date).set_index("Date")["Close"]
+            true_values = true_values.reindex(comparison_df["Date"], method="ffill").reset_index(drop=True)
+            comparison_df = comparison_df.reset_index(drop=True)
+
+            prophet_mae = mean_absolute_error(true_values, comparison_df["Prophet"])
+            arima_mae = mean_absolute_error(true_values, comparison_df["ARIMA"])  # Corrected capitalization
+            lstm_mae = mean_absolute_error(true_values, comparison_df["LSTM"])
+
+            st.markdown("### 📌 Model Performance")
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.metric(label="📉 Prophet MAE", value=f"{prophet_mae:.4f}")
+
+            with col2:
+                st.metric(label="📈 ARIMA MAE", value=f"{arima_mae:.4f}")
+
+            with col3:
+                st.metric(label="🔮 LSTM MAE", value=f"{lstm_mae:.4f}")
+
+            st.markdown("### 📊 Conclusion")
+            best_model = min([("Prophet", prophet_mae), ("ARIMA", arima_mae), ("LSTM", lstm_mae)], key=lambda x: x[1])
+            st.success(f"✅ **{best_model[0]} performed best** with the lowest Mean Absolute Error (MAE).")
         else:
-            st.error(
-                f"⚠️ 'mean' column (Predicted Close Price) not found! Available columns: {', '.join(arima_forecast.columns)}")
-            st.stop()
-
-    elif forecast_model == "Compare Both":
-        comparison_df = compare_models(company_name, start_date, end_date, period)
-        st.markdown("<h3 style='color: #0288D1;'>📊 Prophet vs. ARIMA Forecast Comparison</h3>",
-                    unsafe_allow_html=True)
-
-        # Display Dataframe in UI
-        st.dataframe(comparison_df, use_container_width=True)
-
-        true_values = generative_data_model(company_name, start_date, end_date).set_index("Date")["Close"].reindex(
-            comparison_df["Date"], method="ffill"
-        )
-        prophet_mae = mean_absolute_error(true_values, comparison_df["Prophet Prediction"])
-        arima_mae = mean_absolute_error(true_values, comparison_df["ARIMA Prediction"])
-
-        st.markdown("### 📌 Model Performance")
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.metric(label="📉 Prophet MAE", value=f"{prophet_mae:.4f}")
-
-        with col2:
-            st.metric(label="📈 ARIMA MAE", value=f"{arima_mae:.4f}")
-
-        st.markdown("### 📊 Conclusion")
-        if prophet_mae < arima_mae:
-            st.success("✅ **Prophet performed better** with a lower Mean Absolute Error (MAE).")
-        elif arima_mae < prophet_mae:
-            st.warning("⚠️ **ARIMA performed better** with a lower MAE.")
-        else:
-            st.info("📊 Both models performed similarly. Choose based on your specific needs.")
+            st.error("⚠️ Forecast comparison data is empty or unavailable.")
 
 # Comparison Tab
 if selected_tab == "Comparison":
@@ -463,7 +489,6 @@ if selected_tab == "Comparison":
             low = stock_metrics.get("Low", 0)
             recommendation_mean = recommendation_metrics.get("Mean", 0)
 
-            # Extract snapshot means
             price_snapshot_means = [
                 snapshot["Mean"]
                 for snapshot in stock.get("priceTargetSnapshots", {}).get("PriceTargetSnapshot", [])
