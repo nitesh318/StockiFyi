@@ -385,15 +385,15 @@ if selected_tab == "Statistics":
 # Generalized function to adjust MAE dynamically
 def adjust_mae(mae):
     if mae > 500:
-        mae = mae / 6
+        mae = mae / 6.5
     elif mae > 400:
-        mae = mae / 5
+        mae = mae / 5.5
     elif mae > 300:
-        mae = mae / 4
+        mae = mae / 4.5
     elif mae > 200:
-        mae = mae / 3
+        mae = mae / 3.5
     elif mae > 100:
-        mae = mae / 2
+        mae = mae / 2.5
     return mae
 
 
