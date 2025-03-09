@@ -1,3 +1,8 @@
+"""
+This file is part of StockiFyi.
+Licensed under the MIT License (c) 2025 Nitesh Bhushan.
+See the LICENSE file for more details.
+"""
 from datetime import date
 
 import pandas as pd
@@ -382,7 +387,6 @@ if selected_tab == "Statistics":
                     unsafe_allow_html=True)
 
 
-# Generalized function to adjust MAE dynamically
 def adjust_mae(mae):
     if mae > 500:
         mae = mae / 6.5
